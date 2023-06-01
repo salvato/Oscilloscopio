@@ -42,6 +42,8 @@ Core/Src/stm32f4xx_hal_msp.c \
 USB_HOST/Target/usbh_conf.c \
 USB_HOST/Target/usbh_platform.c \
 USB_HOST/App/usb_host.c \
+Drivers/STM32F4xx_HAL_Driver/Src/stm32f4xx_hal_adc.c \
+Drivers/STM32F4xx_HAL_Driver/Src/stm32f4xx_hal_adc_ex.c \
 Drivers/STM32F4xx_HAL_Driver/Src/stm32f4xx_hal_hcd.c \
 Drivers/STM32F4xx_HAL_Driver/Src/stm32f4xx_ll_usb.c \
 Drivers/STM32F4xx_HAL_Driver/Src/stm32f4xx_hal_rcc.c \

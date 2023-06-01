@@ -45,6 +45,9 @@
 /* USER CODE END PM */
 
 /* Private variables ---------------------------------------------------------*/
+ADC_HandleTypeDef hadc1;
+DMA_HandleTypeDef hdma_adc1;
+TIM_HandleTypeDef htim2;
 I2C_HandleTypeDef hi2c1;
 I2S_HandleTypeDef hi2s3;
 SPI_HandleTypeDef hspi1;
@@ -60,6 +63,16 @@ static void MX_I2C1_Init(void);
 static void MX_I2S3_Init(void);
 static void MX_SPI1_Init(void);
 void MX_USB_HOST_Process(void);
+static void MX_DMA_Init(void);
+static void MX_ADC1_Init(void);
+static void MX_TIM2_Init(void);
+
+#define NS 4096
+#define RAMP_FREQUENCY 1
+uint16_t adc_val[2*NS];
+uint16_t adcBuff[NS];
+__IO bool half_1_ready=false;
+__IO bool half_2_ready=false;
 
 /* USER CODE BEGIN PFP */
 
@@ -86,7 +99,8 @@ main(void) {
   HAL_Init();
 
   /* USER CODE BEGIN Init */
-
+    half_1_ready = false;
+    half_2_ready = false;
   /* USER CODE END Init */
 
   /* Configure the system clock */
@@ -102,26 +116,71 @@ main(void) {
   MX_I2S3_Init();
   MX_SPI1_Init();
   MX_USB_HOST_Init();
+  MX_DMA_Init();
+  MX_ADC1_Init();
+  MX_TIM2_Init();
+
   /* USER CODE BEGIN 2 */
 	LCD_Init();
+  LCD_Clear(Blue);
+
+  for(int y=0; y<240; y+=240/6)
+    LCD_DrawLine(0, y, 319, y, Cyan);
+  LCD_DrawLine(0, 119, 319, 119, Cyan);
+  LCD_DrawLine(0, 121, 319, 121, Cyan);
+  LCD_DrawLine(0, 239, 319, 239, Cyan);
+  for(int x=0; x<320; x+=320/6)
+    LCD_DrawLine(x, 0, x, 239, Cyan);
+  LCD_DrawLine(160, 0, 160, 239, Cyan);
+  LCD_DrawLine(161, 0, 161, 239, Cyan);
+  LCD_DrawLine(319, 0, 319, 239, Cyan);
+
+  if(HAL_ADC_Start_DMA(&hadc1,
+                       (uint32_t*)&adc_val,
+                       2*NS))
+      Error_Handler(); 
+
+  if(HAL_TIM_Base_Start(&htim2))
+      Error_Handler();
+    
+  // start pwm generation (is This needed ?)
+  if(HAL_TIM_PWM_Start(&htim2, TIM_CHANNEL_1))
+      Error_Handler();
 
   /* USER CODE END 2 */
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
   while (1) {
-    /* USER CODE END WHILE */
     MX_USB_HOST_Process();
-    LCD_Clear(Red);
-	GUI_Text(132, 104, (uint8_t*)"DK407V", White, Red);
-    HAL_Delay(1000);
-	LCD_Clear(Red);
-	GUI_Text(76, 120, (uint8_t*)"Development Board V1.0", White, Red);
-    HAL_Delay(1000);
-    /* USER CODE BEGIN 3 */
+    if(half_1_ready) {
+        half_1_ready = false;
+        //HAL_GPIO_TogglePin (LD2_GPIO_Port, LD2_Pin);
+        memcpy(adcBuff, adc_val, NS*sizeof(*adc_val));
+    }
+    if(half_2_ready) {
+        half_2_ready = false;
+        //HAL_GPIO_TogglePin (LD2_GPIO_Port, LD2_Pin);
+        memcpy(adcBuff, &adc_val[NS], NS*sizeof(*adc_val));
+        // for(int i=0; i<NS; i++) {
+        //     sprintf(buf, "buf[%d]=%d\n", i, txBuff[i]);
+        //     HAL_UART_Transmit(&huart2, (uint8_t*)buf, strlen(buf), 10);
+        // }
+        // while(1);
+    }
+
+	// GUI_Text(132, 104, (uint8_t*)"DK407V", White, Red);
+  // HAL_Delay(1000);
+	// LCD_Clear(Red);
+	// GUI_Text(76, 120, (uint8_t*)"Development Board V1.0", White, Red);
+  // HAL_Delay(1000);
   }
+  /* USER CODE END WHILE */
+
+  /* USER CODE BEGIN 3 */
   /* USER CODE END 3 */
 }
+
 
 /**
   * @brief System Clock Configuration
@@ -344,7 +403,6 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Alternate = GPIO_AF5_SPI2;
   HAL_GPIO_Init(CLK_IN_GPIO_Port, &GPIO_InitStruct);
 
-
   GPIO_InitStruct.Pin   = Audio_RST_Pin;
   GPIO_InitStruct.Mode  = GPIO_MODE_OUTPUT_PP;
   GPIO_InitStruct.Pull  = GPIO_NOPULL;
@@ -376,26 +434,115 @@ static void MX_GPIO_Init(void)
 }
 
 
+static void
+MX_ADC1_Init(void) {
+    ADC_ChannelConfTypeDef sConfig = {0};
+
+    hadc1.Instance = ADC1;
+    hadc1.Init.ClockPrescaler        = ADC_CLOCK_SYNC_PCLK_DIV4;
+    hadc1.Init.Resolution            = ADC_RESOLUTION_12B;
+    hadc1.Init.ScanConvMode          = DISABLE;
+    hadc1.Init.ContinuousConvMode    = DISABLE;
+    hadc1.Init.DiscontinuousConvMode = DISABLE;
+    hadc1.Init.ExternalTrigConvEdge  = ADC_EXTERNALTRIGCONVEDGE_RISING;
+    hadc1.Init.ExternalTrigConv      = ADC_EXTERNALTRIGCONV_T2_TRGO;
+    hadc1.Init.DataAlign             = ADC_DATAALIGN_RIGHT;
+    hadc1.Init.NbrOfConversion       = 1;
+    hadc1.Init.DMAContinuousRequests = ENABLE;
+    hadc1.Init.EOCSelection          = ADC_EOC_SINGLE_CONV;
+    if (HAL_ADC_Init(&hadc1) != HAL_OK) {
+        Error_Handler();
+    }
+    // The total conversion time is calculated as follows:
+    // Tconv = ADC_SAMPLETIME + 12 cycles
+    sConfig.Channel      = ADC_CHANNEL_0;
+    sConfig.Rank         = 1;
+    sConfig.SamplingTime = ADC_SAMPLETIME_3CYCLES;
+    if (HAL_ADC_ConfigChannel(&hadc1, &sConfig) != HAL_OK) {
+        Error_Handler();
+    }
+}
+
+
+static void
+MX_TIM2_Init(void) {
+    uint32_t periodValue = (uint32_t)((SystemCoreClock)/(RAMP_FREQUENCY*NS));
+    if(periodValue < 2) {
+        Error_Handler();
+    }
+    periodValue -= 1;
+    uint32_t prescalerValue = 0;
+
+    TIM_ClockConfigTypeDef sClockSourceConfig = {0};
+    TIM_MasterConfigTypeDef sMasterConfig = {0};
+    TIM_OC_InitTypeDef sConfigOC = {0};
+
+    htim2.Instance = TIM2;
+    htim2.Init.Prescaler         = prescalerValue;
+    htim2.Init.CounterMode       = TIM_COUNTERMODE_UP;
+    htim2.Init.Period            = periodValue;
+    htim2.Init.ClockDivision     = TIM_CLOCKDIVISION_DIV1;
+    htim2.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
+    if (HAL_TIM_Base_Init(&htim2) != HAL_OK) {
+        Error_Handler();
+    }
+    sClockSourceConfig.ClockSource = TIM_CLOCKSOURCE_INTERNAL;
+    if (HAL_TIM_ConfigClockSource(&htim2, &sClockSourceConfig) != HAL_OK) {
+        Error_Handler();
+    }
+    // Serve ?
+    // if (HAL_TIM_PWM_Init(&htim2) != HAL_OK) {
+    //     Error_Handler();
+    // }
+    sMasterConfig.MasterOutputTrigger = TIM_TRGO_UPDATE;
+    sMasterConfig.MasterSlaveMode     = TIM_MASTERSLAVEMODE_DISABLE;
+    if (HAL_TIMEx_MasterConfigSynchronization(&htim2, &sMasterConfig) != HAL_OK) {
+        Error_Handler();
+    }
+    sConfigOC.OCMode     = TIM_OCMODE_PWM1;
+    sConfigOC.Pulse      = 0;
+    sConfigOC.OCPolarity = TIM_OCPOLARITY_HIGH;
+    sConfigOC.OCFastMode = TIM_OCFAST_DISABLE;
+    if (HAL_TIM_PWM_ConfigChannel(&htim2, &sConfigOC, TIM_CHANNEL_1) != HAL_OK) {
+        Error_Handler();
+    }
+}
+
+
+static void 
+MX_DMA_Init(void) {
+    __HAL_RCC_DMA1_CLK_ENABLE(); // Used by DAC
+    __HAL_RCC_DMA2_CLK_ENABLE(); // Used by ADC
+
+    /* DMA1_Stream5_IRQn interrupt configuration */
+    HAL_NVIC_SetPriority(DMA1_Stream5_IRQn, 0, 0);
+    HAL_NVIC_EnableIRQ(DMA1_Stream5_IRQn);
+    /* DMA2_Stream0_IRQn interrupt configuration */
+    HAL_NVIC_SetPriority(DMA2_Stream0_IRQn, 0, 0);
+    HAL_NVIC_EnableIRQ(DMA2_Stream0_IRQn);
+}
+
+
 
 
 /* USER CODE BEGIN 4 */
-
 /* USER CODE END 4 */
+
 
 /**
   * @brief  This function is executed in case of error occurrence.
   * @retval None
   */
-void Error_Handler(void)
-{
+void
+Error_Handler(void) {
   /* USER CODE BEGIN Error_Handler_Debug */
   /* User can add his own implementation to report the HAL error return state */
   __disable_irq();
-  while (1)
-  {
+  while (1) {
   }
   /* USER CODE END Error_Handler_Debug */
 }
+
 
 #ifdef  USE_FULL_ASSERT
 /**
@@ -405,8 +552,8 @@ void Error_Handler(void)
   * @param  line: assert_param error line source number
   * @retval None
   */
-void assert_failed(uint8_t *file, uint32_t line)
-{
+void 
+assert_failed(uint8_t *file, uint32_t line) {
   /* USER CODE BEGIN 6 */
   /* User can add his own implementation to report the file name and line number,
      ex: printf("Wrong parameters value: file %s on line %d\r\n", file, line) */

@@ -101,18 +101,15 @@ uint16_t LCD_GetPoint(uint16_t Xpos,uint16_t Ypos);
 void LCD_SetPoint(uint16_t Xpos,uint16_t Ypos,uint16_t point);
 void PutChar(uint16_t Xpos,uint16_t Ypos,uint8_t c,uint16_t charColor,uint16_t bkColor);
 void LCD_DrawLine( uint16_t x0, uint16_t y0, uint16_t x1, uint16_t y1 , uint16_t color );
+void LCD_SetCursor(uint16_t Xpos, uint16_t Ypos);
 void GUI_Text(uint16_t Xpos, uint16_t Ypos, uint8_t *str,uint16_t Color, uint16_t bkColor);
-// void PutChinese(uint16_t Xpos,uint16_t Ypos,uint8_t *str,uint16_t Color,uint16_t bkColor); 
-// void GUI_Chinese(uint16_t Xpos, uint16_t Ypos, uint8_t *str,uint16_t Color, uint16_t bkColor);	
 // void LCD_DrawPicture(uint16_t StartX,uint16_t StartY,uint16_t EndX,uint16_t EndY,uint16_t *pic);
-
 
 __inline void LCD_WriteIndex(uint16_t index);
 __inline void LCD_WriteData(uint16_t data);
 __inline uint16_t LCD_ReadData(void);
 __inline uint16_t LCD_ReadReg(uint16_t LCD_Reg);
 __inline void LCD_WriteReg(uint16_t LCD_Reg,uint16_t LCD_RegValue);
-void LCD_SetCursor(uint16_t Xpos, uint16_t Ypos);
 void delay_ms(uint16_t ms);
 
 #endif 
